@@ -4,7 +4,7 @@ image:
   # Full registry path without tag, e.g.
   # REGION-docker.pkg.dev/PROJECT_ID/order-app/order-service
   repository: asia-south1-docker.pkg.dev/iconic-being-499605-m3/order-app/order-service
-  tag: "latest"
+  tag: latest
   pullPolicy: always
 
 imagePullSecrets: []
