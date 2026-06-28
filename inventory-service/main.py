@@ -88,6 +88,8 @@ def get_route_template(request: Request) -> str:
 # ── Middleware ────────────────────────────────────────────────────
 @app.middleware("http")
 async def observability_middleware(request: Request, call_next):
+    if request.url.path == "/metrics":
+        return await call_next(request)
     trace_id = request.headers.get("x-trace-id", str(uuid.uuid4())[:16])
     start = time.time()
 
