@@ -1,0 +1,148 @@
+# ──────────────────────────────────────────────────────────────────
+# kube-prometheus-stack values — order-app-cluster
+#
+# Setup this is tailored for:
+# - Fully private GKE cluster (no public endpoint, no public LB) —
+#   so no externalUrl / sub-path Ingress routing here. Access Grafana
+#   and Prometheus from the bastion via kubectl port-forward, not a
+#   public URL.
+# - order-service (and inventory/notification later) deploy into the
+#   "order-app" namespace, matching the Helm chart's values.yaml.
+# - Scraping is annotation-based (prometheus.io/scrape etc.), matching
+#   what's already in the order-service chart as-is — no ServiceMonitor
+#   needed unless you decide to add one later. Keeping ONE discovery
+#   mechanism on purpose, so nothing gets double-scraped.
+# - GKE manages the control plane (scheduler, controller-manager, etcd,
+#   kube-proxy via its own mechanisms) — you can't scrape those
+#   yourself on GKE, so they're disabled rather than left to silently
+#   fail target checks.
+# ──────────────────────────────────────────────────────────────────
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    # Watch ServiceMonitors/PodMonitors cluster-wide, in case you add
+    # one later — harmless to leave on even while annotation-scraping
+    # is the primary mechanism, since no ServiceMonitor exists yet.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    retention: 7d
+
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+    # Scrape order-service / inventory-service / notification-service
+    # via their pod annotations (prometheus.io/scrape, /port, /path) —
+    # same mechanism your existing Helm chart already sets, no chart
+    # changes needed.
+    additionalScrapeConfigs:
+      - job_name: "order-app-services"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - order-app
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+);(.+)
+            replacement: $1:$2
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: service
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+
+grafana:
+  enabled: true
+  adminPassword: "observeall@123"   # move to a Secret before sharing this cluster with anyone
+  service:
+    type: ClusterIP   # no public exposure — reach it via port-forward from the bastion
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+kubeStateMetrics:
+  enabled: true
+
+# GKE is a managed control plane — you have no access to scrape these
+# components yourself, so disabling rather than leaving them as
+# permanently-failing targets.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: false
+
+defaultRules:
+  rules:
+    kubeProxy: false
+    kubeScheduler: false
+    kubeControllerManager: false
+    etcd: false
+    disabled:
+      TargetDown: true
+      InfoInhibitor: true
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
