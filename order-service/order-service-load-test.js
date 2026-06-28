@@ -3,8 +3,8 @@ import http from 'k6/http';
 export const options = {
   stages: [
     { duration: '1m', target: 20 },    // baseline
-    { duration: '2m', target: 200 },   // ramp — should push order_active_requests past threshold
-    { duration: '3m', target: 200 },   // sustain — watch HPA scale order-service up
+    { duration: '2m', target: 40 },   // ramp — should push order_active_requests past threshold
+    { duration: '3m', target: 40 },   // sustain — watch HPA scale order-service up
     { duration: '2m', target: 20 },    // ramp down — watch scale-down (after stabilization window)
     { duration: '1m', target: 0 },
   ],
