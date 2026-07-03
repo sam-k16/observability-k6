@@ -26,6 +26,7 @@ podLabels: {}
 
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 10001
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -91,3 +92,7 @@ autoscaling:
         target:
           type: AverageValue
           averageValue: "10"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
