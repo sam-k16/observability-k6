@@ -1,0 +1,31 @@
+fullnameOverride: tempo
+
+tempo:
+  reportingEnabled: false
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  retention: 24h
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+
+persistence:
+  enabled: true
+  storageClassName: standard-rwo
+  size: 5Gi
+
+service:
+  type: ClusterIP
+
+serviceMonitor:
+  enabled: true
