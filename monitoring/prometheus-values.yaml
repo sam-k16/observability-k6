@@ -77,7 +77,61 @@ prometheus:
 
 alertmanager:
   enabled: true
+
+  config:
+    global:
+      resolve_timeout: 5m
+
+    route:
+      receiver: default
+
+      group_by:
+        - alertname
+        - service
+        - severity
+
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+      routes:
+        - matchers:
+            - service=~".+"
+          receiver: slack
+
+    receivers:
+      - name: default
+
+      - name: slack
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack-secret/slack-webhook
+
+            channel: "#order-app-alerts"
+
+            send_resolved: true
+
+            username: Alertmanager
+
+            icon_emoji: ":rotating_light:"
+
+            title: >-
+              [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
+
+            text: |-
+              *Severity:* {{ .CommonLabels.severity }}
+              *Service:* {{ .CommonLabels.service }}
+              *Namespace:* {{ .CommonLabels.namespace }}
+
+              *Summary*
+              {{ .CommonAnnotations.summary }}
+
+              *Description*
+              {{ .CommonAnnotations.description }}
+
   alertmanagerSpec:
+    secrets:
+      - alertmanager-slack-secret
+
     resources:
       requests:
         cpu: 50m
@@ -85,10 +139,12 @@ alertmanager:
       limits:
         cpu: 100m
         memory: 128Mi
+
     storage:
       volumeClaimTemplate:
         spec:
-          accessModes: ["ReadWriteOnce"]
+          accessModes:
+            - ReadWriteOnce
           resources:
             requests:
               storage: 1Gi
