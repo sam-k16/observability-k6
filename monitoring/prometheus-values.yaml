@@ -1,23 +1,3 @@
-# ──────────────────────────────────────────────────────────────────
-# kube-prometheus-stack values — order-app-cluster
-#
-# Setup this is tailored for:
-# - Fully private GKE cluster (no public endpoint, no public LB) —
-#   so no externalUrl / sub-path Ingress routing here. Access Grafana
-#   and Prometheus from the bastion via kubectl port-forward, not a
-#   public URL.
-# - order-service (and inventory/notification later) deploy into the
-#   "order-app" namespace, matching the Helm chart's values.yaml.
-# - Scraping is annotation-based (prometheus.io/scrape etc.), matching
-#   what's already in the order-service chart as-is — no ServiceMonitor
-#   needed unless you decide to add one later. Keeping ONE discovery
-#   mechanism on purpose, so nothing gets double-scraped.
-# - GKE manages the control plane (scheduler, controller-manager, etcd,
-#   kube-proxy via its own mechanisms) — you can't scrape those
-#   yourself on GKE, so they're disabled rather than left to silently
-#   fail target checks.
-# ──────────────────────────────────────────────────────────────────
-
 prometheus:
   enabled: true
   prometheusSpec:
@@ -44,10 +24,6 @@ prometheus:
             requests:
               storage: 5Gi
 
-    # Scrape order-service / inventory-service / notification-service
-    # via their pod annotations (prometheus.io/scrape, /port, /path) —
-    # same mechanism your existing Helm chart already sets, no chart
-    # changes needed.
     additionalScrapeConfigs:
       - job_name: "order-app-services"
         kubernetes_sd_configs:
@@ -87,7 +63,7 @@ alertmanager:
 
       group_by:
         - alertname
-        - service
+        - application
         - severity
 
       group_wait: 30s
@@ -96,7 +72,7 @@ alertmanager:
 
       routes:
         - matchers:
-            - service=~".+"
+            - application="order-app"
           receiver: slack
 
     receivers:
@@ -110,23 +86,26 @@ alertmanager:
 
             send_resolved: true
 
-            username: Alertmanager
+            username: "Alertmanager"
 
             icon_emoji: ":rotating_light:"
 
             title: >-
-              [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
+              [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})
 
             text: |-
+              *Application:* {{ .CommonLabels.application }}
               *Severity:* {{ .CommonLabels.severity }}
               *Service:* {{ .CommonLabels.service }}
-              *Namespace:* {{ .CommonLabels.namespace }}
 
               *Summary*
               {{ .CommonAnnotations.summary }}
 
               *Description*
               {{ .CommonAnnotations.description }}
+
+              *Started*
+              {{ (index .Alerts 0).StartsAt }}
 
   alertmanagerSpec:
     secrets:
