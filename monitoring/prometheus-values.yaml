@@ -130,6 +130,8 @@ alertmanager:
 
 grafana:
   enabled: true
+  deploymentStrategy:
+    type: Recreate
   adminPassword: "observeall@123"   # move to a Secret before sharing this cluster with anyone
   service:
     type: ClusterIP   # no public exposure — reach it via port-forward from the bastion
