@@ -21,12 +21,10 @@
 prometheus:
   enabled: true
   prometheusSpec:
-    # Watch ServiceMonitors/PodMonitors cluster-wide, in case you add
-    # one later — harmless to leave on even while annotation-scraping
-    # is the primary mechanism, since no ServiceMonitor exists yet.
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false
+   # enableRemoteWriteReceiver: true #for node graph in tempo
 
     retention: 7d
 

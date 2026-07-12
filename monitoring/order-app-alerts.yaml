@@ -1,0 +1,245 @@
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: order-app-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+
+spec:
+  groups:
+
+  - name: order-app.service
+    interval: 30s
+    rules:
+
+    - alert: OrderServiceHighErrorRate
+      expr: |
+        (
+          sum(rate(order_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(order_requests_total[5m]))
+        ) * 100 > 10
+      for: 2m
+      labels:
+        severity: critical
+        service: order-service
+      annotations:
+        summary: "Order Service error rate above 10%"
+        description: "Error rate is {{ $value | printf \"%.1f\" }}%."
+
+    - alert: InventoryServiceHighErrorRate
+      expr: |
+        (
+          sum(rate(inventory_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(inventory_requests_total[5m]))
+        ) * 100 > 10
+      for: 2m
+      labels:
+        severity: critical
+        service: inventory-service
+      annotations:
+        summary: "Inventory Service error rate above 10%"
+        description: "Error rate is {{ $value | printf \"%.1f\" }}%."
+
+    - alert: NotificationServiceHighErrorRate
+      expr: |
+        (
+          sum(rate(notification_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(notification_requests_total[5m]))
+        ) * 100 > 10
+      for: 2m
+      labels:
+        severity: warning
+        service: notification-service
+      annotations:
+        summary: "Notification Service error rate above 10%"
+        description: "Notification failure rate is {{ $value | printf \"%.1f\" }}%."
+
+    - alert: OrderServiceHighLatency
+      expr: |
+        histogram_quantile(
+          0.99,
+          sum(rate(order_request_duration_seconds_bucket[5m])) by (le)
+        ) > 3
+      for: 2m
+      labels:
+        severity: warning
+        service: order-service
+      annotations:
+        summary: "Order Service p99 latency above 3 seconds"
+        description: "Current p99 latency is {{ $value | printf \"%.2f\" }}s."
+
+    - alert: InventoryServiceHighLatency
+      expr: |
+        histogram_quantile(
+          0.99,
+          sum(rate(inventory_request_duration_seconds_bucket[5m])) by (le)
+        ) > 3
+      for: 2m
+      labels:
+        severity: warning
+        service: inventory-service
+      annotations:
+        summary: "Inventory Service p99 latency above 3 seconds"
+        description: "Current p99 latency is {{ $value | printf \"%.2f\" }}s."
+
+    - alert: OrderServiceNoTraffic
+      expr: |
+        sum(rate(order_requests_total[5m])) == 0
+      for: 5m
+      labels:
+        severity: critical
+        service: order-service
+      annotations:
+        summary: "Order Service receiving no traffic"
+        description: "No requests have been received for 5 minutes."
+
+    - alert: OrderServiceInventoryDependencyFailure
+      expr: |
+        sum(rate(order_inventory_call_errors_total[5m])) > 0.1
+      for: 2m
+      labels:
+        severity: critical
+        service: order-service
+      annotations:
+        summary: "Order Service cannot reach Inventory Service"
+        description: "Inventory dependency failures detected."
+
+  - name: order-app.autoscaling
+    interval: 30s
+    rules:
+
+    - alert: HpaAtMaxReplicas
+      expr: |
+        kube_horizontalpodautoscaler_status_current_replicas{namespace="order-app"}
+        ==
+        kube_horizontalpodautoscaler_spec_max_replicas{namespace="order-app"}
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "HPA at maximum replicas"
+        description: "HorizontalPodAutoscaler has reached maxReplicas."
+
+    - alert: HpaUnableToScale
+      expr: |
+        kube_horizontalpodautoscaler_status_desired_replicas{namespace="order-app"}
+        >
+        kube_horizontalpodautoscaler_status_current_replicas{namespace="order-app"}
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "HPA unable to reach desired replicas"
+        description: "Desired replicas exceed current replicas."
+
+    - alert: OrderServiceHighActiveRequests
+      expr: |
+        order_active_requests > 8
+      for: 1m
+      labels:
+        severity: info
+        service: order-service
+      annotations:
+        summary: "Order Service active requests approaching HPA threshold"
+        description: "Active requests: {{ $value }}."
+
+  - name: order-app.business
+    interval: 60s
+    rules:
+
+    - alert: InventoryProductLowStock
+      expr: inventory_stock_level < 10
+      labels:
+        severity: warning
+      annotations:
+        summary: "Low stock for {{ $labels.product_id }}"
+        description: "Current stock: {{ $value }}"
+
+    - alert: InventoryProductOutOfStock
+      expr: inventory_stock_level == 0
+      labels:
+        severity: critical
+      annotations:
+        summary: "Product {{ $labels.product_id }} is out of stock"
+        description: "Orders for this product will fail."
+
+    - alert: InventoryHighReductionFailureRate
+      expr: |
+        sum(rate(inventory_reduction_failures_total[5m])) > 0.2
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High inventory reduction failure rate"
+        description: "Stock reduction failures are elevated."
+
+    - alert: NotificationHighDeliveryFailureRate
+      expr: |
+        (
+          sum(rate(notification_failed_deliveries_total[5m]))
+          /
+          sum(rate(notifications_sent_total[5m]))
+        ) * 100 > 20
+      for: 2m
+      labels:
+        severity: warning
+        service: notification-service
+      annotations:
+        summary: "High notification delivery failure rate"
+        description: "Delivery failure rate: {{ $value | printf \"%.1f\" }}%."
+
+  - name: order-app.infrastructure
+    interval: 30s
+    rules:
+
+    - alert: KubernetesPodCrashLooping
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="order-app"}[15m]) > 3
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod crash looping"
+        description: "{{ $labels.pod }} restarted multiple times."
+
+    - alert: KubernetesPodNotReady
+      expr: |
+        kube_pod_status_ready{namespace="order-app",condition="true"} == 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod not ready"
+        description: "{{ $labels.pod }} has not been Ready for 5 minutes."
+
+    - alert: KubernetesContainerMemoryNearLimit
+      expr: |
+        (
+          container_memory_working_set_bytes{namespace="order-app",container!="",container!="POD"}
+          /
+          kube_pod_container_resource_limits{namespace="order-app",resource="memory"}
+        ) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Container memory above 80%"
+        description: "{{ $labels.container }} memory usage is high."
+
+    - alert: KubernetesContainerCpuThrottlingHigh
+      expr: |
+        (
+          sum(rate(container_cpu_cfs_throttled_periods_total{namespace="order-app"}[5m])) by (pod,container)
+          /
+          sum(rate(container_cpu_cfs_periods_total{namespace="order-app"}[5m])) by (pod,container)
+        ) * 100 > 50
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU throttling"
+        description: "{{ $labels.container }} CPU throttling exceeds 50%."
